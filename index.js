@@ -6,7 +6,7 @@ const { throttling } = require('@octokit/plugin-throttling');
 const elasticsearch = require('elasticsearch');
 const moment = require('moment');
 
-const CACHE_INDEX = 'cache';
+const CACHE_INDEX = 'crawler-cache';
 
 const client = new elasticsearch.Client(config.elasticsearch);
 
