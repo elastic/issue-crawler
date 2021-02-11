@@ -8,8 +8,7 @@ LABEL source-commit="${SOURCE_COMMIT:-unknown}"
 RUN mkdir -p /code
 WORKDIR /code
 ADD . /code
-RUN npm install yarn && \
-    yarn install && \
+RUN yarn install && \
     yarn cache clean
 
 ENTRYPOINT ["yarn"]

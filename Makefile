@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 IMAGE_NAME ?= issue-crawler
-REGISTRY_PATH ?= docker.elastic.co/infra
+REGISTRY_PATH ?= docker.elastic.co/employees/timroes
 
 SOURCE_COMMIT := $(shell git rev-parse HEAD)
 UNIQUE_TAG := $(shell printf '%s.%s' "$$(date -u +%Y%m%d%H%M)" "$$(echo "${SOURCE_COMMIT}" | cut -c -12)")
