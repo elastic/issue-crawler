@@ -1,5 +1,5 @@
-if (!process.env.GITHUB_OAUTH_TOKEN || !process.env.ES_HOST || !process.env.ES_AUTH || !process.env.REPOSITORIES) {
-	throw new Error('You need to specify GITHUB_OAUTH_TOKEN, REPOSITORIES, ES_HOST and ES_AUTH env variables.');
+if (!process.env.GITHUB_OAUTH_TOKEN || !process.env.ES_HOST || !process.env.ES_AUTH) {
+	throw new Error('You need to specify GITHUB_OAUTH_TOKEN, ES_HOST and ES_AUTH env variables.');
 }
 
 const repos = (process.env.REPOSITORIES || '').split(',').filter(val => Boolean(val));
