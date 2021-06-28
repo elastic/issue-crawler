@@ -133,21 +133,25 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
  * in the format { [pageNr]: 'cacheKey' }.
  */
 async function loadCacheForRepo(owner, repo) {
-	const entries = await client.search({
-		index: CACHE_INDEX,
-		_source: ['page', 'key'],
-		size: 10000,
-		body: {
-			query: {
-				bool: {
-					filter: [
-						{ match: { owner } },
-						{ match: { repo } }
-					]
+	try {
+		const entries = await client.search({
+			index: CACHE_INDEX,
+			_source: ['page', 'key'],
+			size: 10000,
+			body: {
+				query: {
+					bool: {
+						filter: [
+							{ match: { owner } },
+							{ match: { repo } }
+						]
+					}
 				}
 			}
-		}
-	});
+		});
+	} catch (err){
+		console.log(err);
+	}
 
 	if (entries.hits.total === 0) {
 		return {};
