@@ -10,6 +10,7 @@
   "author": "Tim Roes <mail@timroes.de>",
   "license": "Apache-2.0",
   "dependencies": {
+    "@octokit/auth-app": "^3.6.0",
     "@octokit/plugin-retry": "^3.0.6",
     "@octokit/plugin-throttling": "^3.3.4",
     "@octokit/rest": "^18.0.11",
