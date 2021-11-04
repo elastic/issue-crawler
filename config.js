@@ -6,10 +6,14 @@ const repos = (process.env.REPOSITORIES || '').split(',').filter(val => Boolean(
 const privateRepos = (process.env.PRIVATE_REPOS || '').split(',').filter(val => Boolean(val));
 
 const githubAuth = process.env.GITHUB_OAUTH_TOKEN;
+const [username, password] = (process.env.ES_AUTH || '').split(':');
 
 const elasticsearch = {
-	host: process.env.ES_HOST,
-	httpAuth: process.env.ES_AUTH
+	node: process.env.ES_HOST,
+	auth: {
+		username,
+		password,
+	},
 };
 
 module.exports = {

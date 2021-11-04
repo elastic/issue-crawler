@@ -3,12 +3,12 @@ const config = require('./config.js');
 const { Octokit } = require('@octokit/rest');
 const { retry } = require('@octokit/plugin-retry');
 const { throttling } = require('@octokit/plugin-throttling');
-const elasticsearch = require('elasticsearch');
+const { Client } = require('@elastic/elasticsearch');
 const moment = require('moment');
 
 const CACHE_INDEX = 'crawler-cache';
 
-const client = new elasticsearch.Client(config.elasticsearch);
+const client = new Client({ ...config.elasticsearch, compression: 'gzip' });
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
