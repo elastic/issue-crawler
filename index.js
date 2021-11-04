@@ -133,7 +133,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
  * in the format { [pageNr]: 'cacheKey' }.
  */
 async function loadCacheForRepo(owner, repo) {
-	const entries = await client.search({
+	const { body } = await client.search({
 		index: CACHE_INDEX,
 		_source: ['page', 'key'],
 		size: 10000,
@@ -149,11 +149,7 @@ async function loadCacheForRepo(owner, repo) {
 		}
 	});
 
-	if (entries.hits.total === 0) {
-		return {};
-	}
-
-	return entries.hits.hits.reduce((cache, entry) => {
+	return body.hits.hits.reduce((cache, entry) => {
 		cache[entry._source.page] = entry._source.key;
 		return cache;
 	}, {});
@@ -161,10 +157,12 @@ async function loadCacheForRepo(owner, repo) {
 
 async function main() {
 	async function handleRepository(repository, displayName = repository, isPrivate = false) {
-		console.log(`Processing repository ${displayName}`);
+		console.log(`[${displayName}] Processing repository ${displayName}`);
 		const [ owner, repo ] = repository.split('/');
 
+		console.log(`[${displayName}] Loading cache entries...`);
 		const cache = await loadCacheForRepo(owner, repo);
+		console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
 
 		let page = 1;
 		let shouldCheckNextPage = true;
