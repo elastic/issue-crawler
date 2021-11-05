@@ -126,7 +126,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		console.log(`[${logDisplayName}#${page}] Writing issues and new cache key "${response.headers.etag}" to Elasticsearch`);
 		const esResult = await client.bulk({ body });
 		if (esResult.warnings?.length > 0) {
-			esResult.warnings.forEach(warning => console.warn(`[${logDisplayName}#${page}] ${warning}`));
+			esResult.warnings.forEach(warning => console.warn(`[${logDisplayName}#${page}] [WARN] ${warning}`));
 		}
 	}
 }
