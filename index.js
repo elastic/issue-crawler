@@ -125,6 +125,9 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		const body = [...bulkIssues, ...updateCacheKey];
 		console.log(`[${logDisplayName}#${page}] Writing issues and new cache key "${response.headers.etag}" to Elasticsearch`);
 		const esResult = await client.bulk({ body });
+		if (esResult.body.errors) {
+			console.warn(`[${logDisplayName}#${page}] [ERROR] ${esResult.body.errors.toString()}`);
+		}
 		if (esResult.warnings?.length > 0) {
 			esResult.warnings.forEach(warning => console.warn(`[${logDisplayName}#${page}] [WARN] ${warning}`));
 		}
@@ -164,7 +167,8 @@ async function main() {
 		const [ owner, repo ] = repository.split('/');
 
 		console.log(`[${displayName}] Loading cache entries...`);
-		const cache = await loadCacheForRepo(owner, repo);
+		// const cache = await loadCacheForRepo(owner, repo);
+		const cache = {};
 		console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
 
 		let page = 1;
