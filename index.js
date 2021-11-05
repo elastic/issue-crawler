@@ -94,7 +94,7 @@ function convertIssue(owner, repo, raw) {
  */
 function getIssueBulkUpdates(index, issues) {
 	return [].concat(...issues.map(issue => [
-		{ index: { _index: index, _type: '_doc', _id: issue.id }},
+		{ index: { _index: index, _id: issue.id }},
 		issue
 	]));
 }
@@ -106,7 +106,7 @@ function getIssueBulkUpdates(index, issues) {
 function getCacheKeyUpdate(owner, repo, page, key) {
 	const id = `${owner}_${repo}_${page}`
 	return [
-		{ index: { _index: CACHE_INDEX, _type: '_doc', _id: id }},
+		{ index: { _index: CACHE_INDEX, _id: id }},
 		{ owner, repo, page, key }
 	];
 }
@@ -124,7 +124,10 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		const updateCacheKey = getCacheKeyUpdate(owner, repo, page, response.headers.etag);
 		const body = [...bulkIssues, ...updateCacheKey];
 		console.log(`[${logDisplayName}#${page}] Writing issues and new cache key "${response.headers.etag}" to Elasticsearch`);
-		await client.bulk({ body });
+		const esResult = await client.bulk({ body });
+		if (esResult.warnings?.length > 0) {
+			esResult.warnings.forEach(warning => console.warn(`[${logDisplayName}#${page}] ${warning}`));
+		}
 	}
 }
 
