@@ -47,12 +47,7 @@
         "type": "keyword"
       },
       "body": {
-        "type": "text",
-        "fields": {
-          "keyword": {
-            "type": "keyword"
-          }
-        }
+        "type": "text"
       },
       "labels": {
         "type": "keyword"
