@@ -167,8 +167,7 @@ async function main() {
 		const [ owner, repo ] = repository.split('/');
 
 		console.log(`[${displayName}] Loading cache entries...`);
-		// const cache = await loadCacheForRepo(owner, repo);
-		const cache = {};
+		const cache = await loadCacheForRepo(owner, repo);
 		console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
 
 		let page = 1;
