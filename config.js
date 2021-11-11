@@ -15,9 +15,14 @@ const githubAuth = {
 	installationId: process.env.GITHUB_OAUTH_INSTALLATION_ID,
 };
 
+const [username, password] = (process.env.ES_AUTH || '').split(':');
+
 const elasticsearch = {
-	host: process.env.ES_HOST,
-	httpAuth: process.env.ES_AUTH
+	node: process.env.ES_HOST,
+	auth: {
+		username,
+		password,
+	},
 };
 
 module.exports = {

@@ -4,12 +4,12 @@ const { Octokit } = require('@octokit/rest');
 const { createAppAuth } = require('@octokit/auth-app');
 const { retry } = require('@octokit/plugin-retry');
 const { throttling } = require('@octokit/plugin-throttling');
-const elasticsearch = require('elasticsearch');
+const { Client } = require('@elastic/elasticsearch');
 const moment = require('moment');
 
 const CACHE_INDEX = 'crawler-cache';
 
-const client = new elasticsearch.Client(config.elasticsearch);
+const client = new Client({ ...config.elasticsearch, compression: 'gzip' });
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
@@ -96,7 +96,7 @@ function convertIssue(owner, repo, raw) {
  */
 function getIssueBulkUpdates(index, issues) {
 	return [].concat(...issues.map(issue => [
-		{ index: { _index: index, _type: '_doc', _id: issue.id }},
+		{ index: { _index: index, _id: issue.id }},
 		issue
 	]));
 }
@@ -108,7 +108,7 @@ function getIssueBulkUpdates(index, issues) {
 function getCacheKeyUpdate(owner, repo, page, key) {
 	const id = `${owner}_${repo}_${page}`
 	return [
-		{ index: { _index: CACHE_INDEX, _type: '_doc', _id: id }},
+		{ index: { _index: CACHE_INDEX, _id: id }},
 		{ owner, repo, page, key }
 	];
 }
@@ -126,7 +126,13 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		const updateCacheKey = getCacheKeyUpdate(owner, repo, page, response.headers.etag);
 		const body = [...bulkIssues, ...updateCacheKey];
 		console.log(`[${logDisplayName}#${page}] Writing issues and new cache key "${response.headers.etag}" to Elasticsearch`);
-		await client.bulk({ body });
+		const esResult = await client.bulk({ body });
+		if (esResult.body.errors) {
+			console.warn(`[${logDisplayName}#${page}] [ERROR] ${JSON.stringify(esResult.body, null, 2)}`);
+		}
+		if (esResult.warnings?.length > 0) {
+			esResult.warnings.forEach(warning => console.warn(`[${logDisplayName}#${page}] [WARN] ${warning}`));
+		}
 	}
 }
 
@@ -135,7 +141,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
  * in the format { [pageNr]: 'cacheKey' }.
  */
 async function loadCacheForRepo(owner, repo) {
-	const entries = await client.search({
+	const { body } = await client.search({
 		index: CACHE_INDEX,
 		_source: ['page', 'key'],
 		size: 10000,
@@ -151,11 +157,7 @@ async function loadCacheForRepo(owner, repo) {
 		}
 	});
 
-	if (entries.hits.total === 0) {
-		return {};
-	}
-
-	return entries.hits.hits.reduce((cache, entry) => {
+	return body.hits.hits.reduce((cache, entry) => {
 		cache[entry._source.page] = entry._source.key;
 		return cache;
 	}, {});
@@ -163,10 +165,12 @@ async function loadCacheForRepo(owner, repo) {
 
 async function main() {
 	async function handleRepository(repository, displayName = repository, isPrivate = false) {
-		console.log(`Processing repository ${displayName}`);
+		console.log(`[${displayName}] Processing repository ${displayName}`);
 		const [ owner, repo ] = repository.split('/');
 
+		console.log(`[${displayName}] Loading cache entries...`);
 		const cache = await loadCacheForRepo(owner, repo);
+		console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
 
 		let page = 1;
 		let shouldCheckNextPage = true;
