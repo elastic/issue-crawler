@@ -1,5 +1,5 @@
-if (!process.env.ES_HOST || !process.env.ES_AUTH) {
-	throw new Error('You need to specify ES_HOST and ES_AUTH env variables.');
+if (!process.env.ES_HOST || !process.env.ES_USER || !process.env.ES_PASSWORD) {
+	throw new Error('You need to specify ES_HOST, ES_USER and ES_PASSWORD env variables.');
 }
 
 if (!process.env.GITHUB_OAUTH_APP_ID || !process.env.GITHUB_OAUTH_PRIVATE_KEY || !process.env.GITHUB_OAUTH_INSTALLATION_ID) {
@@ -15,13 +15,11 @@ const githubAuth = {
 	installationId: process.env.GITHUB_OAUTH_INSTALLATION_ID,
 };
 
-const [username, password] = (process.env.ES_AUTH || '').split(':');
-
 const elasticsearch = {
 	node: process.env.ES_HOST,
 	auth: {
-		username,
-		password,
+		username: process.env.ES_USER,
+		password: process.env.ES_PASSWORD,
 	},
 };
 
