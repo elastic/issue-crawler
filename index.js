@@ -1,6 +1,7 @@
 const config = require('./config.js');
 
 const { Octokit } = require('@octokit/rest');
+const { createAppAuth } = require('@octokit/auth-app');
 const { retry } = require('@octokit/plugin-retry');
 const { throttling } = require('@octokit/plugin-throttling');
 const { Client } = require('@elastic/elasticsearch');
@@ -13,6 +14,7 @@ const client = new Client({ ...config.elasticsearch, compression: 'gzip' });
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
 	previews: ['squirrel-girl-preview'],
+	authStrategy: createAppAuth,
 	auth: config.githubAuth,
 	request: { retries: 2 },
 	throttle: {
