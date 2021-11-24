@@ -7,7 +7,7 @@
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Tim Roes <mail@timroes.de>",
+  "author": "Brian Seeders <brian.seeders@elastic.co>",
   "license": "Apache-2.0",
   "dependencies": {
     "@elastic/elasticsearch": "^7.15.0",
