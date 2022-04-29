@@ -1,3 +1,0 @@
-# The GH repo is not needed since the github-issue crawler code is contained within the issue-crawler image
-echo "Hello my pre-checkout hook"
-export BUILDKITE_REPO=""
