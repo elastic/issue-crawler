@@ -1,0 +1,7 @@
+---
+
+steps:
+  - label: ":wave: Greetings"
+    command: "crawl.sh"
+    agents:
+      image: "docker.io/library/hello-world"
