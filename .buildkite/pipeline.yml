@@ -1,6 +1,6 @@
 agents:
   useVault: true
-  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.2"
+  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.3"
 
 steps:
 
@@ -8,5 +8,5 @@ steps:
     command: "crawl.sh"
     env:
       PRIVATE_REPOS: "elastic/ci"
-#    plugins:
-#      - thedyrt/skip-checkout#v0.1.1: ~
+    plugins:
+      - thedyrt/skip-checkout#v0.1.1: ~
