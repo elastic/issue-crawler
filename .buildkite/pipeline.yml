@@ -8,5 +8,5 @@ steps:
     command: "crawl.sh"
     env:
       PRIVATE_REPOS: "elastic/ci"
-    plugins:
-      - thedyrt/skip-checkout#v0.1.1: ~
+#    plugins:
+#      - thedyrt/skip-checkout#v0.1.1: ~
