@@ -9,5 +9,4 @@ steps:
     env:
       PRIVATE_REPOS: "elastic/ci"
     plugins:
-      # The GH repo is not needed since the github-issue crawler code is contained within the issue-crawler image
       - thedyrt/skip-checkout#v0.1.1: ~
