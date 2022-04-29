@@ -1,5 +1,8 @@
 #!/bin/sh
 
+ROOT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd $ROOT_DIR
+
 export ES_HOST=$(vault read -field host secret/ci/elastic-issue-crawler/github-stats-user)
 export ES_USER=$(vault read -field user secret/ci/elastic-issue-crawler/github-stats-user)
 export ES_PASSWORD=$(vault read -field password secret/ci/elastic-issue-crawler/github-stats-user)
