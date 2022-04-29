@@ -1,11 +1,11 @@
 agents:
   useVault: true
-  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.3"
+  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.4"
 
 steps:
 
   - label: ":wave: Greetings"
-    command: "crawl.sh"
+    command: "/issue-crawler-buildkite-pipeline/crawl.sh"
     env:
       PRIVATE_REPOS: "elastic/ci"
     plugins:
