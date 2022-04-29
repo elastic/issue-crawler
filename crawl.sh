@@ -7,7 +7,7 @@ export GITHUB_OAUTH_APP_ID=$(vault read -field app_id $GITHUB_OAUTH_APP_VAULT_PA
 export GITHUB_OAUTH_INSTALLATION_ID=$(vault read -field installation_id $GITHUB_OAUTH_APP_VAULT_PATH)
 export GITHUB_OAUTH_PRIVATE_KEY=$(vault read -field private_key $GITHUB_OAUTH_APP_VAULT_PATH)
 
-RUN yarn install && \
-    yarn cache clean
+echo $ES_HOST
+yarn install && yarn cache clean
 
 yarn start
