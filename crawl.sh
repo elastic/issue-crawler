@@ -12,5 +12,6 @@ export GITHUB_OAUTH_PRIVATE_KEY=$(vault read -field private_key secret/ci/elasti
 
 echo $ES_HOST
 echo $PRIVATE_REPOS
-
+pwd
+ls
 yarn start
