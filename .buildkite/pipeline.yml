@@ -1,6 +1,6 @@
 agents:
   useVault: true
-  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.0"
+  image: "docker.elastic.co/employees/nkammah/github-stats-crawler:1.1"
 
 steps:
   - label: ":wave: Greetings"
