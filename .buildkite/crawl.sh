@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# The GH repo is not needed since the github-issue crawler code is contained within the issue-crawler image
-export BUILDKITE_REPO=""
-
 ES_HOST=$(vault read -field host secret/ci/elastic-issue-crawler/github-stats-user)
 ES_USER=$(vault read -field user secret/ci/elastic-issue-crawler/github-stats-user)
 ES_PASSWORD=$(vault read -field password secret/ci/elastic-issue-crawler/github-stats-user)
