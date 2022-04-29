@@ -4,4 +4,4 @@ steps:
   - label: ":wave: Greetings"
     command: "crawl.sh"
     agents:
-      image: "docker.io/library/hello-world"
+      image: "docker.elastic.co/ci-agent-images/ci-systems/github-stats-crawler:1.0"

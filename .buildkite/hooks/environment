@@ -1,1 +1,2 @@
+# The GH repo is not needed since the github-issue crawler code is contained within the issue-crawler image
 export BUILDKITE_REPO=""
