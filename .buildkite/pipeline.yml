@@ -4,9 +4,8 @@ agents:
 
 steps:
 
-  - label: ":wave: CI repo"
+  - label: ":wave: Crawling GitHub issues"
     command: "crawl.sh"
     env:
-      PRIVATE_REPOS: "elastic/ci"
       ES_CLUSTER_INFO_VAULT_PATH: "secret/ci/elastic-issue-crawler/github-stats-user"
       GITHUB_OAUTH_APP_VAULT_PATH: "secret/ci/elastic-issue-crawler/github_oauth_app"
