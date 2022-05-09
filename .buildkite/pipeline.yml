@@ -1,0 +1,11 @@
+agents:
+  useVault: true
+  image: "docker.io/library/node:18"
+
+steps:
+
+  - label: ":wave: Crawling GitHub issues"
+    command: "crawl.sh"
+    env:
+      ES_CLUSTER_INFO_VAULT_PATH: "secret/ci/elastic-issue-crawler/github-stats-user"
+      GITHUB_OAUTH_APP_VAULT_PATH: "secret/ci/elastic-issue-crawler/github_oauth_app"
