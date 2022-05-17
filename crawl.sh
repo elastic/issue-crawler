@@ -10,3 +10,5 @@ export GITHUB_OAUTH_PRIVATE_KEY=$(vault read -field private_key $GITHUB_OAUTH_AP
 yarn install && yarn cache clean
 
 yarn start
+
+buildkite-agent annotate --style "success" "All tests passed! 🚀"
