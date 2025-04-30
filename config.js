@@ -23,7 +23,7 @@ const elasticsearch = {
 	},
 };
 
-module.exports = {
+export default {
 	elasticsearch,
 	githubAuth,
 	repos,
