@@ -100,30 +100,28 @@ function getIssueBulkUpdates(index, issues) {
 }
 
 /**
- * Returns the bulk request body to update the cache key for the specified repo
- * and page.
+ * Returns the bulk request body to update the timestamp cache for the specified repo.
  */
-function getCacheKeyUpdate(owner, repo, page, key, next_url) {
-    const id = `${owner}_${repo}_${page}`
+function getTimestampCacheUpdate(owner, repo, timestamp) {
+    const id = `${owner}_${repo}`
     return [
         {index: {_index: CACHE_INDEX, _id: id}},
-        {owner, repo, page, key, next_url}
+        {owner, repo, timestamp}
     ];
 }
 
 /**
  * Processes a GitHub response for the specified page of issues.
- * This will convert all issues to the desired format, store them into
- * Elasticsearch and update the cache key, we got from GitHub.
+ * This will convert all issues to the desired format and store them into
+ * Elasticsearch.
  */
-async function processGitHubIssues(owner, repo, response, page, indexName, logDisplayName, nextUrl) {
+async function processGitHubIssues(owner, repo, response, page, indexName, logDisplayName) {
     console.log(`[${logDisplayName}#${page}] Found ${response.data.length} issues`);
     if (response.data.length > 0) {
         const issues = response.data.map(issue => convertIssue(owner, repo, issue));
         const bulkIssues = getIssueBulkUpdates(indexName, issues);
-        const updateCacheKey = getCacheKeyUpdate(owner, repo, page, response.headers.etag, nextUrl);
-        const body = [...bulkIssues, ...updateCacheKey];
-        console.log(`[${logDisplayName}#${page}] Writing issues and new cache key ${response.headers.etag} to Elasticsearch`);
+        const body = [...bulkIssues];
+        console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
         const esResult = await client.bulk({body});
 
         if (esResult.errors) {
@@ -134,15 +132,14 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 }
 
 /**
- * Load the existing cache for the specified repository. The result will be
- * in the format { [pageNr]: 'cacheKey' }.
+ * Returns the timestamp of the last fetch for a given repo or null if not found.
  */
 async function loadCacheForRepo(owner, repo) {
     try {
         const body = await client.search({
             index: CACHE_INDEX,
-            _source: ['page', 'key', 'next_url'],
-            size: 10000,
+            _source: ['timestamp'],
+            size: 1,
             body: {
                 query: {
                     bool: {
@@ -155,13 +152,13 @@ async function loadCacheForRepo(owner, repo) {
             }
         });
 
-        return body.hits.hits.reduce((cache, entry) => {
-            cache[entry._source.page] = {key: entry._source.key, next_url: entry._source.next_url};
-            return cache;
-        }, {});
+        if (body.hits.hits.length > 0) {
+            return body.hits.hits[0]._source.timestamp;
+        }
+        return null;
     } catch (error) {
         console.error(`Failed to load cache for ${owner}/${repo}:`, error);
-        return {};
+        return null;
     }
 }
 
@@ -171,27 +168,30 @@ async function main() {
             console.log(`[${displayName}] Processing repository ${displayName}`);
             const [owner, repo] = repository.split('/');
 
-            console.log(`[${displayName}] Loading cache entries...`);
-            const cache = await loadCacheForRepo(owner, repo);
-            console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
+            const lastFetchTimestamp = await loadCacheForRepo(owner, repo);
+            console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);            
+            const currentTimestamp = new Date().toISOString();
 
             let page = 1;
             let shouldCheckNextPage = true;
             let url = "/repos/{owner}/{repo}/issues";
             while (shouldCheckNextPage) {
-                console.log(`[${displayName}#${page}] Requesting issues using etag: ${cache[page]?.key}`);
+                console.log(`[${displayName}#${page}] Requesting issues using since: ${lastFetchTimestamp || 'none'}`);
                 try {
-                    const headers = cache[page] ? {'If-None-Match': cache[page].key} : {};
-                    const response = await octokit.issues.listForRepo({
+                    const options = {
                         url,
                         owner,
                         repo,
                         per_page: 100,
                         state: 'all',
                         sort: 'created',
-                        direction: 'asc',
-                        headers: headers
-                    });
+                        direction: 'asc'
+                    };
+                    if (lastFetchTimestamp) {
+                        options.since = lastFetchTimestamp;
+                    }
+                    
+                    const response = await octokit.issues.listForRepo(options);
                     console.log(`[${displayName}#${page}] Remaining request limit: %s/%s`,
                         response.headers['x-ratelimit-remaining'],
                         response.headers['x-ratelimit-limit']
@@ -200,18 +200,11 @@ async function main() {
                     url = ((response.headers.link || "").match(
                         /<([^<>]+)>;\s*rel="next"/
                     ) || [])[1];
-                    await processGitHubIssues(owner, repo, response, page, indexName, displayName, url);
+                    await processGitHubIssues(owner, repo, response, page, indexName, displayName);
 
                     shouldCheckNextPage = response.headers.link && response.headers.link.includes('rel="next"');
                     page++;
                 } catch (error) {
-                    if (error.name === 'HttpError' && error.status === 304) {
-                        // Ignore not modified responses and continue with the next page.
-                        console.log(`[${displayName}#${page}] Page was not modified. Continue with next page.`);
-                        url = cache[page].next_url;
-                        page++;
-                        continue;
-                    }
 
                     if (error.request && error.request.request.retryCount) {
                         console.error(`[${displayName}#${page}] Failed request for page after ${error.request.request.retryCount} retries.`);
@@ -222,6 +215,11 @@ async function main() {
                     throw error;
                 }
             }
+            
+            // After processing all pages, update the timestamp cache
+            console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
+            const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
+            await client.bulk({body: updateTimestampCache});
         }
 
         const results = await Promise.allSettled([
