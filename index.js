@@ -127,8 +127,8 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
         const esResult = await client.bulk({body});
 
         if (esResult.errors) {
-            esResult.items.filter(x => x.index.error != null);
-            console.warn(`[${logDisplayName}#${page}] [ERROR] ${JSON.stringify(esResult.items, null, 2)}`);
+            const errorItems = esResult.items.filter(x => x.index.error != null);
+            console.warn(`[${logDisplayName}#${page}] [ERROR] ${JSON.stringify(errorItems, null, 2)}`);
         }
     }
 }
