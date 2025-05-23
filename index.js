@@ -14,8 +14,7 @@ const client = new Client({...config.elasticsearch, compression: 'gzip'});
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
     previews: ['squirrel-girl-preview'],
-    authStrategy: createAppAuth,
-    auth: config.githubAuth,
+    ...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
     throttle: {
         onRateLimit: (retryAfter, options, octokit) => {
             octokit.log.warn(`Request quota exhausted.`);
