@@ -145,7 +145,8 @@ async function loadCacheForRepo(owner, repo) {
                     bool: {
                         filter: [
                             {match: {owner}},
-                            {match: {repo}}
+                            {match: {repo}},
+                            {exists: {field: "timestamp"}}
                         ]
                     }
                 }
