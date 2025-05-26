@@ -24,16 +24,15 @@ const octokit = new RetryOctokit({
 	auth: config.githubAuth,
 	request: { retries: 2 },
 	throttle: {
-	    onRateLimit: (retryAfter, options, octokit) => {
-		octokit.log.warn('Request quota exhausted.');
-	    },
-	    onAbuseLimit: (retryAfter, options, octokit) => {
-		octokit.log.warn(`Abuse limit triggered, retrying after ${retryAfter}s ...`);
-		return true;
-	    }
-	},
+		onRateLimit: (retryAfter, options, octokit) => {
+			octokit.log.warn(`Request quota exhausted.`);
+		},
+		onAbuseLimit: (retryAfter, options, octokit) => {
+			octokit.log.warn(`Abuse limit triggered, retrying after ${retryAfter}s ...`);
+			return true;
+		},
 	retry: {
-	    doNotRetry: ['429'],
+		doNotRetry: ['429'],
 	},
 });
 
@@ -42,15 +41,15 @@ const octokit = new RetryOctokit({
  * information about that date (e.g. day of the week or hour of day).
  */
 function enhanceDate(date) {
-    if (!date) return null;
-
-    const m = moment(date);
-    return {
-        time: m.format(),
-        weekday: m.format('ddd'),
-        weekday_number: parseInt(m.format('d')),
-        hour_of_day: parseInt(m.format('H'))
-    };
+	if (!date) return null;
+	
+	const m = moment(date);
+	return {
+	time: m.format(),
+	weekday: m.format('ddd'),
+	weekday_number: parseInt(m.format('d')),
+	hour_of_day: parseInt(m.format('H'))
+	};
 }
 
 /**
@@ -58,55 +57,55 @@ function enhanceDate(date) {
  * object that should be stored inside Elasticsearch.
  */
 function convertIssue(owner, repo, raw) {
-    const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
-    const is_transferred = !!transferEvt;
-    const moved_from = transferEvt?.previous_repository?.full_name ?? null;
-    const moved_to = transferEvt?.repository?.full_name ?? null;
-    const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
-
-    const time_to_fix = (raw.created_at && raw.closed_at)
-        ? moment(raw.closed_at).diff(moment(raw.created_at))
-        : null;
-
-    return {
-        id: raw.id,
-        last_crawled_at: Date.now(),
-        owner,
-        repo,
-        state: raw.state,
-        title: raw.title,
-        number: raw.number,
-        url: raw.url,
-        locked: raw.locked,
-        comments: raw.comments,
-        created_at: enhanceDate(raw.created_at),
-        updated_at: enhanceDate(raw.updated_at),
-        closed_at: enhanceDate(raw.closed_at),
-        author_association: raw.author_association,
-        user: raw.user.login,
-        body: raw.body,
-        labels: raw.labels.map(label => label.name),
-        is_pullrequest: !!raw.pull_request,
-        assignees: raw.assignees?.map(a => a.login) ?? null,
-        reactions: raw.reactions
-            ? {
-                total: raw.reactions.total_count,
-                upVote: raw.reactions['+1'],
-                downVote: raw.reactions['-1'],
-                laugh: raw.reactions.laugh,
-                hooray: raw.reactions.hooray,
-                confused: raw.reactions.confused,
-                heart: raw.reactions.hearts,
-                rocket: raw.reactions.rocket,
-                eyes: raw.reactions.eyes,
-            }
-            : null,
-        time_to_fix,
-        is_transferred,
-        moved_from,
-        moved_to,
-        transferred_at,
-    };
+	const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
+	const is_transferred = !!transferEvt;
+	const moved_from = transferEvt?.previous_repository?.full_name ?? null;
+	const moved_to = transferEvt?.repository?.full_name ?? null;
+	const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
+	
+	const time_to_fix = (raw.created_at && raw.closed_at)
+	? moment(raw.closed_at).diff(moment(raw.created_at))
+	: null;
+	
+	return {
+	id: raw.id,
+	last_crawled_at: Date.now(),
+	owner,
+	repo,
+	state: raw.state,
+	title: raw.title,
+	number: raw.number,
+	url: raw.url,
+	locked: raw.locked,
+	comments: raw.comments,
+	created_at: enhanceDate(raw.created_at),
+	updated_at: enhanceDate(raw.updated_at),
+	closed_at: enhanceDate(raw.closed_at),
+	author_association: raw.author_association,
+	user: raw.user.login,
+	body: raw.body,
+	labels: raw.labels.map(label => label.name),
+	is_pullrequest: !!raw.pull_request,
+	assignees: raw.assignees?.map(a => a.login) ?? null,
+	reactions: raw.reactions
+	    ? {
+		total: raw.reactions.total_count,
+		upVote: raw.reactions['+1'],
+		downVote: raw.reactions['-1'],
+		laugh: raw.reactions.laugh,
+		hooray: raw.reactions.hooray,
+		confused: raw.reactions.confused,
+		heart: raw.reactions.hearts,
+		rocket: raw.reactions.rocket,
+		eyes: raw.reactions.eyes,
+	    }
+	    : null,
+	time_to_fix,
+	is_transferred,
+	moved_from,
+	moved_to,
+	transferred_at,
+	};
 }
 
 /**
