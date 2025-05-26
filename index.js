@@ -19,22 +19,22 @@ function getLazyClient() {
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
-        previews: ['squirrel-girl-preview', 'mockingbird-preview'],
-        authStrategy: createAppAuth,
-        auth: config.githubAuth,
-        request: { retries: 2 },
-        throttle: {
-            onRateLimit: (retryAfter, options, octokit) => {
-                octokit.log.warn('Request quota exhausted.');
-            },
-            onAbuseLimit: (retryAfter, options, octokit) => {
-                octokit.log.warn(`Abuse limit triggered, retrying after ${retryAfter}s ...`);
-                return true;
-            }
-        },
-        retry: {
-            doNotRetry: ['429'],
-        },
+		previews: ['squirrel-girl-preview', 'mockingbird-preview'],
+		authStrategy: createAppAuth,
+		auth: config.githubAuth,
+		request: { retries: 2 },
+		throttle: {
+		    onRateLimit: (retryAfter, options, octokit) => {
+		        octokit.log.warn('Request quota exhausted.');
+		    },
+		    onAbuseLimit: (retryAfter, options, octokit) => {
+		        octokit.log.warn(`Abuse limit triggered, retrying after ${retryAfter}s ...`);
+		        return true;
+		    }
+		},
+		retry: {
+		    doNotRetry: ['429'],
+		},
 });
 
 /**
