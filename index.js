@@ -19,16 +19,14 @@ function getLazyClient() {
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
 	previews: ['squirrel-girl-preview'],
-	...(typeof config.githubAuth === 'object'
-		? { authStrategy: createAppAuth, auth: config.githubAuth }
-		: { auth: config.githubAuth }),
+	...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
 	throttle: {
 		onRateLimit: (retryAfter, options, octokit) => {
 			octokit.log.warn(`Request quota exhausted.`);
 		},
 		onAbuseLimit: (retryAfter, options, octokit) => {
-			octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`);
-		},
+			octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`)
+		}
 	},
 	retry: {
 		doNotRetry: ['429'],
@@ -59,17 +57,14 @@ function convertIssue(owner, repo, raw) {
 		? moment(raw.closed_at).diff(moment(raw.created_at))
 		: null;
 
-	// Minimal addition: detect if the issue was transferred
 	const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
 	const is_transferred = !!transferEvt;
-	const moved_from =
-		transferEvt && transferEvt.previous_repository
-			? transferEvt.previous_repository.full_name
-			: null;
-	const moved_to =
-		transferEvt && transferEvt.repository
-			? transferEvt.repository.full_name
-			: null;
+	const moved_from = transferEvt && transferEvt.previous_repository
+		? transferEvt.previous_repository.full_name
+		: null;
+	const moved_to = transferEvt && transferEvt.repository
+		? transferEvt.repository.full_name
+		: null;
 	const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
 
 	return {
@@ -92,19 +87,17 @@ function convertIssue(owner, repo, raw) {
 		labels: raw.labels.map(label => label.name),
 		is_pullrequest: !!raw.pull_request,
 		assignees: !raw.assignees ? null : raw.assignees.map(a => a.login),
-		reactions: !raw.reactions
-			? null
-			: {
-				total: raw.reactions.total_count,
-				upVote: raw.reactions['+1'],
-				downVote: raw.reactions['-1'],
-				laugh: raw.reactions.laugh,
-				hooray: raw.reactions.hooray,
-				confused: raw.reactions.confused,
-				heart: raw.reactions.hearts,
-				rocket: raw.reactions.rocket,
-				eyes: raw.reactions.eyes,
-			},
+		reactions: !raw.reactions ? null : {
+			total: raw.reactions.total_count,
+			upVote: raw.reactions['+1'],
+			downVote: raw.reactions['-1'],
+			laugh: raw.reactions.laugh,
+			hooray: raw.reactions.hooray,
+			confused: raw.reactions.confused,
+			heart: raw.reactions.hearts,
+			rocket: raw.reactions.rocket,
+			eyes: raw.reactions.eyes,
+		},
 		time_to_fix: time_to_fix,
 
 		is_transferred: is_transferred,
@@ -119,22 +112,20 @@ function convertIssue(owner, repo, raw) {
  * which these issues should be stored.
  */
 function getIssueBulkUpdates(index, issues) {
-	return [].concat(
-		...issues.map(issue => [
-			{ index: { _index: index, _id: issue.id } },
-			issue,
-		])
-	);
+	return [].concat(...issues.map(issue => [
+		{ index: { _index: index, _id: issue.id } },
+		issue
+	]));
 }
 
 /**
  * Returns the bulk request body to update the timestamp cache for the specified repo.
  */
 function getTimestampCacheUpdate(owner, repo, timestamp) {
-	const id = `${owner}_${repo}`;
+	const id = `${owner}_${repo}`
 	return [
 		{ index: { _index: CACHE_INDEX, _id: id } },
-		{ owner, repo, timestamp },
+		{ owner, repo, timestamp }
 	];
 }
 
@@ -146,7 +137,6 @@ function getTimestampCacheUpdate(owner, repo, timestamp) {
 async function processGitHubIssues(owner, repo, response, page, indexName, logDisplayName) {
 	console.log(`[${logDisplayName}#${page}] Found ${response.data.length} issues`);
 	if (response.data.length > 0) {
-		// Minimal addition: fetch timeline for open issues
 		const enriched = await Promise.all(
 			response.data.map(async issue => {
 				if (issue.state === 'open') {
@@ -174,7 +164,9 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		const issues = enriched.map(i => convertIssue(owner, repo, i));
 		const bulkIssues = getIssueBulkUpdates(indexName, issues);
 		console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-		const esResult = await getLazyClient().bulk({ body: bulkIssues });
+
+		const body = [...bulkIssues];
+		const esResult = await getLazyClient().bulk({ body });
 
 		if (esResult.errors) {
 			const errorItems = esResult.items.filter(x => x.index.error != null);
@@ -224,10 +216,9 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 	const indexName = isPrivate
 		? `private-issues-${owner}-${repo}`
 		: `issues-${owner}-${repo}`;
-	const esClient = getLazyClient();
-	console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
 
-	const { body: esSearch } = await esClient.search({
+	console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
+	const esSearch = await getLazyClient().search({
 		index: indexName,
 		size: 2000,
 		body: {
@@ -248,7 +239,7 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 		},
 	});
 
-	const hits = esSearch.hits.hits;
+	const hits = esSearch.body.hits.hits;
 	console.log(`[CLEANUP] Found ${hits.length} stale open issues in ${owner}/${repo} to verify.`);
 
 	for (const doc of hits) {
@@ -269,7 +260,7 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 
 		if (!stillExists) {
 			console.log(`[CLEANUP] Issue #${issueNumber} not found; marking as transferred in ES`);
-			await esClient.update({
+			await getLazyClient().update({
 				index: indexName,
 				id: docId,
 				body: {
@@ -297,7 +288,7 @@ async function main() {
 
 			let page = 1;
 			let shouldCheckNextPage = true;
-			let url = '/repos/{owner}/{repo}/issues';
+			let url = "/repos/{owner}/{repo}/issues";
 			while (shouldCheckNextPage) {
 				console.log(`[${displayName}#${page}] Requesting issues using since: ${lastFetchTimestamp || 'none'}`);
 				try {
@@ -308,7 +299,7 @@ async function main() {
 						per_page: 100,
 						state: 'all',
 						sort: 'created',
-						direction: 'asc',
+						direction: 'asc'
 					};
 					if (lastFetchTimestamp) {
 						options.since = lastFetchTimestamp;
@@ -332,7 +323,9 @@ async function main() {
 					page++;
 				} catch (error) {
 					if (error.request && error.request.request.retryCount) {
-						console.error(`[${displayName}#${page}] Failed request for page after ${error.request.request.retryCount} retries.`);
+						console.error(
+							`[${displayName}#${page}] Failed request for page after ${error.request.request.retryCount} retries.`
+						);
 						console.error(`[${displayName}#${page}] ${error.toString()}`);
 					} else {
 						console.error(error);
@@ -347,10 +340,11 @@ async function main() {
 			await getLazyClient().bulk({ body: updateTimestampCache });
 		}
 
+		// Process configured repos
 		const results = await Promise.allSettled([
 			...config.repos.map(rep => handleRepository(rep)),
 			...(config.privateRepos.length > 0
-				? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true))
+				? config.privateRepos.map(rep => handleRepository(rep, rep, true))
 				: []),
 		]);
 
