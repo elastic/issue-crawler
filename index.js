@@ -1,5 +1,4 @@
 const config = require('./config.js');
-
 const { Octokit } = require('@octokit/rest');
 const { createAppAuth } = require('@octokit/auth-app');
 const { retry } = require('@octokit/plugin-retry');
@@ -19,22 +18,21 @@ function getLazyClient() {
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
-	previews: ['squirrel-girl-preview', 'mockingbird-preview'],
-	authStrategy: createAppAuth,
-	auth: config.githubAuth,
-	request: { retries: 2 },
+	previews: ['squirrel-girl-preview'],
+	...(typeof config.githubAuth === 'object'
+		? { authStrategy: createAppAuth, auth: config.githubAuth }
+		: { auth: config.githubAuth }),
 	throttle: {
 		onRateLimit: (retryAfter, options, octokit) => {
 			octokit.log.warn(`Request quota exhausted.`);
 		},
 		onAbuseLimit: (retryAfter, options, octokit) => {
-			octokit.log.warn(`Abuse limit triggered, retrying after ${retryAfter}s ...`);
-			return true;
+			octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`);
 		},
-		retry: {
-			doNotRetry: ['429'],
-		},
-	}
+	},
+	retry: {
+		doNotRetry: ['429'],
+	},
 });
 
 /**
@@ -48,7 +46,7 @@ function enhanceDate(date) {
 		time: m.format(),
 		weekday: m.format('ddd'),
 		weekday_number: parseInt(m.format('d')),
-		hour_of_day: parseInt(m.format('H'))
+		hour_of_day: parseInt(m.format('H')),
 	};
 }
 
@@ -60,17 +58,25 @@ function convertIssue(owner, repo, raw) {
 	const time_to_fix = (raw.created_at && raw.closed_at)
 		? moment(raw.closed_at).diff(moment(raw.created_at))
 		: null;
+
+	// Minimal addition: detect if the issue was transferred
 	const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
 	const is_transferred = !!transferEvt;
-	const moved_from = transferEvt?.previous_repository?.full_name ?? null;
-	const moved_to = transferEvt?.repository?.full_name ?? null;
+	const moved_from =
+		transferEvt && transferEvt.previous_repository
+			? transferEvt.previous_repository.full_name
+			: null;
+	const moved_to =
+		transferEvt && transferEvt.repository
+			? transferEvt.repository.full_name
+			: null;
 	const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
 
 	return {
 		id: raw.id,
 		last_crawled_at: Date.now(),
-		owner,
-		repo,
+		owner: owner,
+		repo: repo,
 		state: raw.state,
 		title: raw.title,
 		number: raw.number,
@@ -85,9 +91,10 @@ function convertIssue(owner, repo, raw) {
 		body: raw.body,
 		labels: raw.labels.map(label => label.name),
 		is_pullrequest: !!raw.pull_request,
-		assignees: raw.assignees?.map(a => a.login) ?? null,
-		reactions: raw.reactions
-			? {
+		assignees: !raw.assignees ? null : raw.assignees.map(a => a.login),
+		reactions: !raw.reactions
+			? null
+			: {
 				total: raw.reactions.total_count,
 				upVote: raw.reactions['+1'],
 				downVote: raw.reactions['-1'],
@@ -97,13 +104,13 @@ function convertIssue(owner, repo, raw) {
 				heart: raw.reactions.hearts,
 				rocket: raw.reactions.rocket,
 				eyes: raw.reactions.eyes,
-			}
-			: null,
-		time_to_fix,
-		is_transferred,
-		moved_from,
-		moved_to,
-		transferred_at,
+			},
+		time_to_fix: time_to_fix,
+
+		is_transferred: is_transferred,
+		moved_from: moved_from,
+		moved_to: moved_to,
+		transferred_at: transferred_at,
 	};
 }
 
@@ -121,102 +128,102 @@ function getIssueBulkUpdates(index, issues) {
 }
 
 /**
- * Returns the bulk request body to update the cache key for the specified repo
- * and page.
+ * Returns the bulk request body to update the timestamp cache for the specified repo.
  */
-function getCacheKeyUpdate(owner, repo, page, key) {
-	const id = `${owner}_${repo}_${page}`;
+function getTimestampCacheUpdate(owner, repo, timestamp) {
+	const id = `${owner}_${repo}`;
 	return [
-		{ index: { _index: 'crawler-cache', _id: id } },
-		{ owner, repo, page, key },
+		{ index: { _index: CACHE_INDEX, _id: id } },
+		{ owner, repo, timestamp },
 	];
 }
 
 /**
  * Processes a GitHub response for the specified page of issues.
- * This will convert all issues to the desired format, store them into
- * Elasticsearch and update the cache key, we got from GitHub.
+ * This will convert all issues to the desired format and store them into
+ * Elasticsearch.
  */
 async function processGitHubIssues(owner, repo, response, page, indexName, logDisplayName) {
 	console.log(`[${logDisplayName}#${page}] Found ${response.data.length} issues`);
-	if (!response.data.length) return;
-
-	const enriched = await Promise.all(
-		response.data.map(async raw => {
-			if (raw.state === 'open') {
-				try {
-					const tl = await octokit.issues.listEventsForTimeline({
-						owner,
-						repo,
-						issue_number: raw.number,
-					});
-					raw.timeline = tl.data;
-				} catch (err) {
-					console.warn(`timeline fetch failed for #${raw.number}:`, err.message);
-					raw.timeline = [];
+	if (response.data.length > 0) {
+		// Minimal addition: fetch timeline for open issues
+		const enriched = await Promise.all(
+			response.data.map(async issue => {
+				if (issue.state === 'open') {
+					try {
+						const tl = await octokit.issues.listEventsForTimeline({
+							owner,
+							repo,
+							issue_number: issue.number,
+						});
+						issue.timeline = tl.data;
+					} catch (err) {
+						console.warn(
+							`[${logDisplayName}#${page}] Failed to fetch timeline for issue #${issue.number}:`,
+							err.message
+						);
+						issue.timeline = [];
+					}
+				} else {
+					issue.timeline = [];
 				}
-			} else {
-				raw.timeline = [];
-			}
-			return raw;
-		})
-	);
-
-	const issues = enriched.map(raw => convertIssue(owner, repo, raw));
-	const bulkIssues = getIssueBulkUpdates(indexName, issues);
-	const updateKey = getCacheKeyUpdate(owner, repo, page, response.headers.etag);
-	const body = [...bulkIssues, ...updateKey];
-
-	console.log(
-		`[${logDisplayName}#${page}] Writing issues + cache key "${response.headers.etag}" to Elasticsearch`
-	);
-	const esResult = await getLazyClient().bulk({ body });
-	if (esResult.body.errors) {
-		console.warn(
-			`[${logDisplayName}#${page}] [ERROR]`,
-			JSON.stringify(esResult.body, null, 2)
+				return issue;
+			})
 		);
+
+		const issues = enriched.map(i => convertIssue(owner, repo, i));
+		const bulkIssues = getIssueBulkUpdates(indexName, issues);
+		console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
+		const esResult = await getLazyClient().bulk({ body: bulkIssues });
+
+		if (esResult.errors) {
+			const errorItems = esResult.items.filter(x => x.index.error != null);
+			console.warn(`[${logDisplayName}#${page}] [ERROR] ${JSON.stringify(errorItems, null, 2)}`);
+		}
 	}
-	esResult.warnings?.forEach(w => console.warn(`[${logDisplayName}#${page}] [WARN]`, w));
 }
 
 /**
- * Load the existing cache for the specified repository. The result will be
- * in the format { [pageNr]: 'cacheKey' }.
+ * Returns the timestamp of the last fetch for a given repo or null if not found.
  */
 async function loadCacheForRepo(owner, repo) {
-	const { body } = await getLazyClient().search({
-		index: 'crawler-cache',
-		_source: ['page', 'key'],
-		size: 10000,
-		body: {
-			query: {
-				bool: {
-					filter: [
-						{ match: { owner } },
-						{ match: { repo } },
-					],
+	try {
+		const body = await getLazyClient().search({
+			index: CACHE_INDEX,
+			_source: ['timestamp'],
+			size: 1,
+			body: {
+				query: {
+					bool: {
+						filter: [
+							{ match: { owner } },
+							{ match: { repo } },
+							{ exists: { field: 'timestamp' } },
+						],
+					},
 				},
 			},
-		},
-	});
+		});
 
-	return body.hits.hits.reduce((cache, hit) => {
-		cache[hit._source.page] = hit._source.key;
-		return cache;
-	}, {});
+		if (body.hits.hits.length > 0) {
+			return body.hits.hits[0]._source.timestamp;
+		}
+		return null;
+	} catch (error) {
+		console.error(`Failed to load cache for ${owner}/${repo}:`, error);
+		return null;
+	}
 }
 
 /**
- * Cleans up any stale open issues that might have been transferred out of
- * the original repo. Looks up issues older than 60 days and checks their
- * existence in GitHub; if not found, marks them as transferred in ES.
+ * Cleans up any stale open issues that might have been transferred.
+ * Checks older open issues in Elasticsearch and marks them as transferred
+ * if they no longer exist in GitHub.
  */
 async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 	const indexName = isPrivate
 		? `private-issues-${owner}-${repo}`
 		: `issues-${owner}-${repo}`;
-
 	const esClient = getLazyClient();
 	console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
 
@@ -226,21 +233,19 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 		body: {
 			query: {
 				bool: {
-					must: [
-						{ term: { state: 'open' } },
-					],
+					must: [{ term: { state: 'open' } }],
 					filter: [
 						{
 							range: {
 								'updated_at.time': {
-									lt: 'now-60d'
-								}
-							}
-						}
-					]
-				}
-			}
-		}
+									lt: 'now-60d',
+								},
+							},
+						},
+					],
+				},
+			},
+		},
 	});
 
 	const hits = esSearch.hits.hits;
@@ -271,8 +276,8 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 					doc: {
 						state: 'transferred',
 						is_transferred: true,
-					}
-				}
+					},
+				},
 			});
 		}
 	}
@@ -281,67 +286,94 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 }
 
 async function main() {
-	async function handleRepository(repository, displayName = repository, isPrivate = false) {
-		console.log(`[${displayName}] Processing repository`);
-		const [owner, repo] = repository.split('/');
-		console.log(`[${displayName}] Loading cache entries...`);
-		const cache = await loadCacheForRepo(owner, repo);
-		console.log(`[${displayName}] Found ${Object.keys(cache).length} cache entries`);
+	try {
+		async function handleRepository(repository, displayName = repository, isPrivate = false) {
+			console.log(`[${displayName}] Processing repository ${displayName}`);
+			const [owner, repo] = repository.split('/');
 
-		let page = 1;
-		let hasNext = true;
-		while (hasNext) {
-			console.log(`[${displayName}#${page}] Requesting issues, ETag=${cache[page]}`);
-			try {
-				const headers = cache[page] ? { 'If-None-Match': cache[page] } : {};
-				const response = await octokit.issues.listForRepo({
-					owner,
-					repo,
-					page,
-					per_page: 100,
-					state: 'all',
-					sort: 'created',
-					direction: 'asc',
-					headers,
-				});
+			const lastFetchTimestamp = await loadCacheForRepo(owner, repo);
+			console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);
+			const currentTimestamp = new Date().toISOString();
 
-				console.log(
-					`[${displayName}#${page}] Rate limit: ${response.headers['x-ratelimit-remaining']}/${response.headers['x-ratelimit-limit']}`
-				);
+			let page = 1;
+			let shouldCheckNextPage = true;
+			let url = '/repos/{owner}/{repo}/issues';
+			while (shouldCheckNextPage) {
+				console.log(`[${displayName}#${page}] Requesting issues using since: ${lastFetchTimestamp || 'none'}`);
+				try {
+					const options = {
+						url,
+						owner,
+						repo,
+						per_page: 100,
+						state: 'all',
+						sort: 'created',
+						direction: 'asc',
+					};
+					if (lastFetchTimestamp) {
+						options.since = lastFetchTimestamp;
+					}
 
-				const indexName = isPrivate
-					? `private-issues-${owner}-${repo}`
-					: `issues-${owner}-${repo}`;
+					const response = await octokit.issues.listForRepo(options);
+					console.log(
+						`[${displayName}#${page}] Remaining request limit: %s/%s`,
+						response.headers['x-ratelimit-remaining'],
+						response.headers['x-ratelimit-limit']
+					);
+					const indexName = isPrivate
+						? `private-issues-${owner}-${repo}`
+						: `issues-${owner}-${repo}`;
+					url = ((response.headers.link || '').match(/<([^<>]+)>;\s*rel="next"/) || [])[1];
 
-				await processGitHubIssues(owner, repo, response, page, indexName, displayName);
-				hasNext = response.headers.link?.includes('rel="next"');
-				page++;
-			} catch (error) {
-				if (error.name === 'HttpError' && error.status === 304) {
-					console.log(`[${displayName}#${page}] Not modified; skipping.`);
+					await processGitHubIssues(owner, repo, response, page, indexName, displayName);
+
+					shouldCheckNextPage =
+						response.headers.link && response.headers.link.includes('rel="next"');
 					page++;
-					continue;
+				} catch (error) {
+					if (error.request && error.request.request.retryCount) {
+						console.error(`[${displayName}#${page}] Failed request for page after ${error.request.request.retryCount} retries.`);
+						console.error(`[${displayName}#${page}] ${error.toString()}`);
+					} else {
+						console.error(error);
+					}
+					throw error;
 				}
-				console.error(error);
-				throw error;
 			}
+
+			// After processing all pages, update the timestamp cache
+			console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
+			const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
+			await getLazyClient().bulk({ body: updateTimestampCache });
 		}
-	}
 
-	const all = [
-		...config.repos.map(r => handleRepository(r)),
-		...config.privateRepos.map((r, i) =>
-			handleRepository(r, `PRIVATE_REPOS[${i}]`, true)
-		),
-	];
+		const results = await Promise.allSettled([
+			...config.repos.map(rep => handleRepository(rep)),
+			...(config.privateRepos.length > 0
+				? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true))
+				: []),
+		]);
 
-	const results = await Promise.allSettled(all);
-	if (results.some(r => r.status === 'rejected')) {
+		const failedRepos = results.filter(r => r.status === 'rejected');
+		if (failedRepos.length > 0) {
+			console.error(`${failedRepos.length} repositories failed to process`);
+			failedRepos.forEach((result, i) => {
+				console.error(`Failed repository #${i}:`, result.reason);
+			});
+			process.exit(1);
+		} else {
+			console.log('All repositories processed successfully!');
+		}
+	} catch (error) {
+		console.error('Unexpected error in main execution:', error);
 		process.exit(1);
 	}
 }
 
-main();
+main().catch(error => {
+	console.error('Failed to execute script:', error);
+	process.exit(1);
+});
 
 module.exports = {
 	convertIssue,
