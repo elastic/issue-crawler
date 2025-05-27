@@ -120,11 +120,11 @@ function getIssueBulkUpdates(index, issues) {
  * Returns the bulk request body to update the timestamp cache for the specified repo.
  */
 function getTimestampCacheUpdate(owner, repo, timestamp) {
-	const id = `${owner}_${repo}`
-	return [
-		{ index: { _index: CACHE_INDEX, _id: id } },
-		{ owner, repo, timestamp }
-	];
+    const id = `${owner}_${repo}`
+    return [
+        {index: {_index: CACHE_INDEX, _id: id}},
+        {owner, repo, timestamp}
+    ];
 }
 
 /**
@@ -162,10 +162,10 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
 		const issues = enriched.map(i => convertIssue(owner, repo, i));
 		const bulkIssues = getIssueBulkUpdates(indexName, issues);
 		console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-
+	
 		const body = [...bulkIssues];
 		const esResult = await getLazyClient().bulk({ body });
-
+	
 		if (esResult.errors) {
 			const errorItems = esResult.items.filter(x => x.index.error != null);
 			console.warn(`[${logDisplayName}#${page}] [ERROR] ${JSON.stringify(errorItems, null, 2)}`);
@@ -194,7 +194,7 @@ async function loadCacheForRepo(owner, repo) {
 				},
 			},
 		});
-
+	
 		if (body.hits.hits.length > 0) {
 			return body.hits.hits[0]._source.timestamp;
 		}
@@ -279,11 +279,11 @@ async function main() {
 		async function handleRepository(repository, displayName = repository, isPrivate = false) {
 			console.log(`[${displayName}] Processing repository ${displayName}`);
 			const [owner, repo] = repository.split('/');
-
+	
 			const lastFetchTimestamp = await loadCacheForRepo(owner, repo);
 			console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);
 			const currentTimestamp = new Date().toISOString();
-
+	
 			let page = 1;
 			let shouldCheckNextPage = true;
 			let url = "/repos/{owner}/{repo}/issues";
@@ -302,7 +302,7 @@ async function main() {
 					if (lastFetchTimestamp) {
 						options.since = lastFetchTimestamp;
 					}
-
+	
 					const response = await octokit.issues.listForRepo(options);
 					console.log(
 						`[${displayName}#${page}] Remaining request limit: %s/%s`,
@@ -313,9 +313,9 @@ async function main() {
 						? `private-issues-${owner}-${repo}`
 						: `issues-${owner}-${repo}`;
 					url = ((response.headers.link || '').match(/<([^<>]+)>;\s*rel="next"/) || [])[1];
-
+	
 					await processGitHubIssues(owner, repo, response, page, indexName, displayName);
-
+	
 					shouldCheckNextPage =
 						response.headers.link && response.headers.link.includes('rel="next"');
 					page++;
@@ -331,13 +331,13 @@ async function main() {
 					throw error;
 				}
 			}
-
+	
 			// After processing all pages, update the timestamp cache
 			console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
 			const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
 			await getLazyClient().bulk({ body: updateTimestampCache });
 		}
-
+	
 		// Process configured repos
 		const results = await Promise.allSettled([
 			...config.repos.map(rep => handleRepository(rep)),
@@ -345,7 +345,7 @@ async function main() {
 				? config.privateRepos.map(rep => handleRepository(rep, rep, true))
 				: []),
 		]);
-
+	
 		const failedRepos = results.filter(r => r.status === 'rejected');
 		if (failedRepos.length > 0) {
 			console.error(`${failedRepos.length} repositories failed to process`);
