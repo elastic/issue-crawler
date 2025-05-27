@@ -56,7 +56,7 @@ function convertIssue(owner, repo, raw) {
 	const time_to_fix = (raw.created_at && raw.closed_at)
 		? moment(raw.closed_at).diff(moment(raw.created_at))
 		: null;
-
+	
 	const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
 	const is_transferred = !!transferEvt;
 	const moved_from = transferEvt && transferEvt.previous_repository
@@ -99,7 +99,7 @@ function convertIssue(owner, repo, raw) {
 			eyes: raw.reactions.eyes,
 		},
 		time_to_fix: time_to_fix,
-
+	
 		is_transferred: is_transferred,
 		moved_from: moved_from,
 		moved_to: moved_to,
