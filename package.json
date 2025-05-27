@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "ES_HOST=http://localhost:9200 ES_USER=elastic ES_PASSWORD=changeme GITHUB_OAUTH_APP_ID=1 GITHUB_OAUTH_PRIVATE_KEY='FAKE_KEY' GITHUB_OAUTH_INSTALLATION_ID=123 jest"
   },
   "author": "Brian Seeders <brian.seeders@elastic.co>",
   "license": "Apache-2.0",
@@ -18,5 +18,8 @@
     "@octokit/rest": "^21.1.1",
     "console-log-level": "^1.4.1",
     "moment": "^2.29.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }
