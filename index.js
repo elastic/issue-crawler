@@ -18,19 +18,19 @@ function getLazyClient() {
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
-	previews: ['squirrel-girl-preview'],
-	...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
-	throttle: {
-		onRateLimit: (retryAfter, options, octokit) => {
-			octokit.log.warn(`Request quota exhausted.`);
-		},
-		onAbuseLimit: (retryAfter, options, octokit) => {
-			octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`)
-		}
-	},
-	retry: {
-		doNotRetry: ['429'],
-	},
+    previews: ['squirrel-girl-preview'],
+    ...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
+    throttle: {
+        onRateLimit: (retryAfter, options, octokit) => {
+            octokit.log.warn(`Request quota exhausted.`);
+        },
+        onAbuseLimit: (retryAfter, options, octokit) => {
+            octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`)
+        }
+    },
+    retry: {
+        doNotRetry: ['429'],
+    },
 });
 
 /**
@@ -38,14 +38,15 @@ const octokit = new RetryOctokit({
  * information about that date (e.g. day of the week or hour of day).
  */
 function enhanceDate(date) {
-	if (!date) return null;
-	const m = moment(date);
-	return {
-		time: m.format(),
-		weekday: m.format('ddd'),
-		weekday_number: parseInt(m.format('d')),
-		hour_of_day: parseInt(m.format('H')),
-	};
+    if (!date) return null;
+
+    const m = moment(date);
+    return {
+        time: m.format(),
+        weekday: m.format('ddd'),
+        weekday_number: parseInt(m.format('d')),
+        hour_of_day: parseInt(m.format('H'))
+    };
 }
 
 /**
@@ -53,57 +54,54 @@ function enhanceDate(date) {
  * object that should be stored inside Elasticsearch.
  */
 function convertIssue(owner, repo, raw) {
-	const time_to_fix = (raw.created_at && raw.closed_at)
-		? moment(raw.closed_at).diff(moment(raw.created_at))
-		: null;
-	
-	const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
-	const is_transferred = !!transferEvt;
-	const moved_from = transferEvt && transferEvt.previous_repository
+    const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
+    const is_transferred = !!transferEvt;
+    const moved_from = transferEvt && transferEvt.previous_repository
 		? transferEvt.previous_repository.full_name
 		: null;
-	const moved_to = transferEvt && transferEvt.repository
+    const moved_to = transferEvt && transferEvt.repository
 		? transferEvt.repository.full_name
 		: null;
-	const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
-
-	return {
-		id: raw.id,
-		last_crawled_at: Date.now(),
-		owner: owner,
-		repo: repo,
-		state: raw.state,
-		title: raw.title,
-		number: raw.number,
-		url: raw.url,
-		locked: raw.locked,
-		comments: raw.comments,
-		created_at: enhanceDate(raw.created_at),
-		updated_at: enhanceDate(raw.updated_at),
-		closed_at: enhanceDate(raw.closed_at),
-		author_association: raw.author_association,
-		user: raw.user.login,
-		body: raw.body,
-		labels: raw.labels.map(label => label.name),
-		is_pullrequest: !!raw.pull_request,
-		assignees: !raw.assignees ? null : raw.assignees.map(a => a.login),
-		reactions: !raw.reactions ? null : {
-			total: raw.reactions.total_count,
-			upVote: raw.reactions['+1'],
-			downVote: raw.reactions['-1'],
-			laugh: raw.reactions.laugh,
-			hooray: raw.reactions.hooray,
-			confused: raw.reactions.confused,
-			heart: raw.reactions.hearts,
-			rocket: raw.reactions.rocket,
-			eyes: raw.reactions.eyes,
-		},
-		time_to_fix: time_to_fix,
-	
-		is_transferred: is_transferred,
-		moved_from: moved_from,
-		moved_to: moved_to,
-		transferred_at: transferred_at,
+    const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
+    const time_to_fix = (raw.created_at && raw.closed_at) ?
+        moment(raw.closed_at).diff(moment(raw.created_at)) :
+        null;
+    return {
+        id: raw.id,
+        last_crawled_at: Date.now(),
+        owner: owner,
+        repo: repo,
+        state: raw.state,
+        title: raw.title,
+        number: raw.number,
+        url: raw.url,
+        locked: raw.locked,
+        comments: raw.comments,
+        created_at: enhanceDate(raw.created_at),
+        updated_at: enhanceDate(raw.updated_at),
+        closed_at: enhanceDate(raw.closed_at),
+        author_association: raw.author_association,
+        user: raw.user.login,
+        body: raw.body,
+        labels: raw.labels.map(label => label.name),
+        is_pullrequest: !!raw.pull_request,
+        assignees: !raw.assignees ? null : raw.assignees.map(a => a.login),
+        reactions: !raw.reactions ? null : {
+            total: raw.reactions.total_count,
+            upVote: raw.reactions['+1'],
+            downVote: raw.reactions['-1'],
+            laugh: raw.reactions.laugh,
+            hooray: raw.reactions.hooray,
+            confused: raw.reactions.confused,
+            heart: raw.reactions.hearts,
+            rocket: raw.reactions.rocket,
+            eyes: raw.reactions.eyes,
+        },
+        time_to_fix: time_to_fix,
+	is_transferred: is_transferred,
+	moved_from: moved_from,
+	moved_to: moved_to,
+	transferred_at: transferred_at,
 	};
 }
 
@@ -112,10 +110,10 @@ function convertIssue(owner, repo, raw) {
  * which these issues should be stored.
  */
 function getIssueBulkUpdates(index, issues) {
-	return [].concat(...issues.map(issue => [
-		{ index: { _index: index, _id: issue.id } },
-		issue
-	]));
+    return [].concat(...issues.map(issue => [
+        {index: {_index: index, _id: issue.id}},
+        issue
+    ]));
 }
 
 /**
