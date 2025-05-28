@@ -8,24 +8,18 @@ const moment = require('moment');
 
 const CACHE_INDEX = 'crawler-cache';
 
-let lazyClient;
-function getLazyClient() {
-    if (!lazyClient) {
-        lazyClient = new Client({ ...config.elasticsearch, compression: 'gzip' });
-    }
-    return lazyClient;
-}
+const client = new Client({ ...config.elasticsearch, compression: 'gzip' });
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
     previews: ['squirrel-girl-preview'],
     ...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
     throttle: {
-        onRateLimit: (retryAfter, options, octokit) => {
-            octokit.log.warn(`Request quota exhausted.`);
+        onAbuseLimit: (retryAfter, options, octo) => {
+            octo.log.warn(`Request quota exhausted.`);
         },
-        onAbuseLimit: (retryAfter, options, octokit) => {
-            octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`);
+        onSecondaryRateLimit: (retryAfter, options, octo) => {
+            octo.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`);
         }
     },
     retry: {
@@ -57,15 +51,6 @@ function convertIssue(owner, repo, raw) {
     const time_to_fix = (raw.created_at && raw.closed_at) ?
         moment(raw.closed_at).diff(moment(raw.created_at)) :
         null;
-    const transferEvt = (raw.timeline || []).find(e => e.event === 'transferred');
-    const is_transferred = !!transferEvt;
-    const moved_from = transferEvt && transferEvt.previous_repository
-        ? transferEvt.previous_repository.full_name
-        : null;
-    const moved_to = transferEvt && transferEvt.repository
-        ? transferEvt.repository.full_name
-        : null;
-    const transferred_at = transferEvt ? enhanceDate(transferEvt.created_at) : null;
 
     return {
         id: raw.id,
@@ -99,10 +84,6 @@ function convertIssue(owner, repo, raw) {
             eyes: raw.reactions.eyes,
         },
         time_to_fix: time_to_fix,
-        is_transferred: is_transferred,
-        moved_from: moved_from,
-        moved_to: moved_to,
-        transferred_at: transferred_at,
     };
 }
 
@@ -136,36 +117,11 @@ function getTimestampCacheUpdate(owner, repo, timestamp) {
 async function processGitHubIssues(owner, repo, response, page, indexName, logDisplayName) {
     console.log(`[${logDisplayName}#${page}] Found ${response.data.length} issues`);
     if (response.data.length > 0) {
-        // Enrich open issues with timeline data
-        const enriched = await Promise.all(
-            response.data.map(async issue => {
-                if (issue.state === 'open') {
-                    try {
-                        const tl = await octokit.issues.listEventsForTimeline({
-                            owner,
-                            repo,
-                            issue_number: issue.number,
-                        });
-                        issue.timeline = tl.data;
-                    } catch (err) {
-                        console.warn(
-                            `[${logDisplayName}#${page}] Failed to fetch timeline for issue #${issue.number}:`,
-                            err.message
-                        );
-                        issue.timeline = [];
-                    }
-                } else {
-                    issue.timeline = [];
-                }
-                return issue;
-            })
-        );
-
-        const issues = enriched.map(i => convertIssue(owner, repo, i));
+        const issues = response.data.map(issue => convertIssue(owner, repo, issue));
         const bulkIssues = getIssueBulkUpdates(indexName, issues);
         const body = [...bulkIssues];
         console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-        const esResult = await getLazyClient().bulk({ body });
+        const esResult = await client.bulk({ body });
 
         if (esResult.errors) {
             const errorItems = esResult.items.filter(x => x.index.error != null);
@@ -179,7 +135,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
  */
 async function loadCacheForRepo(owner, repo) {
     try {
-        const body = await getLazyClient().search({
+        const body = await client.search({
             index: CACHE_INDEX,
             _source: ['timestamp'],
             size: 1,
@@ -215,7 +171,7 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
     const indexName = isPrivate ? `private-issues-${owner}-${repo}` : `issues-${owner}-${repo}`;
 
     console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
-    const esSearch = await getLazyClient().search({
+    const esSearch = await client.search({
         index: indexName,
         size: 2000,
         body: {
@@ -248,7 +204,7 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
         try {
             await octokit.issues.get({ owner, repo, issue_number: issueNumber });
         } catch (err) {
-            if (err.status === 404) {
+            if (err.status === 301) {
                 stillExists = false;
             } else {
                 console.error(`[CLEANUP] Error verifying #${issueNumber}:`, err);
@@ -256,8 +212,8 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
         }
 
         if (!stillExists) {
-            console.log(`[CLEANUP] Issue #${issueNumber} not found; marking as transferred in ES`);
-            await getLazyClient().update({
+            console.log(`[CLEANUP] Issue #${issueNumber} was moved; marking as transferred in ES`);
+            await client.update({
                 index: indexName,
                 id: docId,
                 body: {
@@ -301,7 +257,6 @@ async function main() {
                     if (lastFetchTimestamp) {
                         options.since = lastFetchTimestamp;
                     }
-                    
                     const response = await octokit.issues.listForRepo(options);
                     console.log(`[${displayName}#${page}] Remaining request limit: %s/%s`,
                         response.headers['x-ratelimit-remaining'],
@@ -326,27 +281,27 @@ async function main() {
                     throw error;
                 }
             }
-            
+
             // After processing all pages, update the timestamp cache
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
-            await getLazyClient().bulk({ body: updateTimestampCache });
-        }
+            await client.bulk({ body: updateTimestampCache });
 
-        const results = await Promise.allSettled([
-            ...config.repos.map(rep => handleRepository(rep)),
-            ...(config.privateRepos.length > 0 ? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true)) : [])
-        ]);
+            const results = await Promise.allSettled([
+                ...config.repos.map(rep => handleRepository(rep)),
+                ...(config.privateRepos.length > 0 ? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true)) : [])
+            ]);
 
-        const failedRepos = results.filter(r => r.status === 'rejected');
-        if (failedRepos.length > 0) {
-            console.error(`${failedRepos.length} repositories failed to process`);
-            failedRepos.forEach((result, i) => {
-                console.error(`Failed repository #${i}:`, result.reason);
-            });
-            process.exit(1);
-        } else {
-            console.log('All repositories processed successfully!');
+            const failedRepos = results.filter(r => r.status === 'rejected');
+            if (failedRepos.length > 0) {
+                console.error(`${failedRepos.length} repositories failed to process`);
+                failedRepos.forEach((result, i) => {
+                    console.error(`Failed repository #${i}:`, result.reason);
+                });
+                process.exit(1);
+            } else {
+                console.log('All repositories processed successfully!');
+            }
         }
     } catch (error) {
         console.error('Unexpected error in main execution:', error);
@@ -354,13 +309,15 @@ async function main() {
     }
 }
 
-main().catch(error => {
-    console.error('Failed to execute script:', error);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch(error => {
+        console.error('Failed to execute script:', error);
+        process.exit(1);
+    });
+}
 
 module.exports = {
     convertIssue,
     processGitHubIssues,
     cleanupTransferredIssues
-};
+}
