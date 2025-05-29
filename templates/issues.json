@@ -139,18 +139,6 @@
             "type": "integer"
           }
         }
-      },
-      "is_transferred": {
-        "type": "boolean"
-      },
-      "moved_from": {
-        "type": "keyword"
-      },
-      "moved_to": {
-        "type": "keyword"
-      },
-      "transferred_at": {
-        "type": "date"
       }
     }
   }
