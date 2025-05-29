@@ -164,8 +164,8 @@ async function loadCacheForRepo(owner, repo) {
 
 /**
  * Cleans up any stale open issues that might have been transferred.
- * Checks older open issues in Elasticsearch and marks them as transferred
- * if they no longer exist in GitHub.
+ * Checks older open issues in Elasticsearch and deletes them
+ * if they no longer exist in GitHub (i.e., return 301).
  */
 async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
     const indexName = isPrivate ? `private-issues-${owner}-${repo}` : `issues-${owner}-${repo}`;
@@ -212,7 +212,7 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
         }
 
         if (!stillExists) {
-            console.log(`[CLEANUP] Issue #${issueNumber} was moved; marking as transferred in ES`);
+            console.log(`[CLEANUP] Issue #${issueNumber} was moved; deleting from Elasticsearch`);
             await client.delete({
                 index: indexName,
                 id: docId
@@ -281,22 +281,20 @@ async function main() {
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
             await client.bulk({ body: updateTimestampCache });
 
-            const results = await Promise.allSettled([
-                ...config.repos.map(rep => handleRepository(rep)),
-                ...(config.privateRepos.length > 0 ? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true)) : [])
-            ]);
+        const results = await Promise.allSettled([
+            ...config.repos.map(rep => handleRepository(rep)),
+            ...(config.privateRepos.length > 0 ? config.privateRepos.map((rep, index) => handleRepository(rep, rep, true)) : [])
+        ]);
 
-            const failedRepos = results.filter(r => r.status === 'rejected');
-            if (failedRepos.length > 0) {
-                console.error(`${failedRepos.length} repositories failed to process`);
-                failedRepos.forEach((result, i) => {
-                    console.error(`Failed repository #${i}:`, result.reason);
-                });
-                process.exit(1);
-            } else {
-                console.log('All repositories processed successfully!');
-            }
-        }
+        const failedRepos = results.filter(r => r.status === 'rejected');
+        if (failedRepos.length > 0) {
+            console.error(`${failedRepos.length} repositories failed to process`);
+            failedRepos.forEach((result, i) => {
+                console.error(`Failed repository #${i}:`, result.reason);
+            });
+            process.exit(1);
+        } else {
+            console.log('All repositories processed successfully!');
     } catch (error) {
         console.error('Unexpected error in main execution:', error);
         process.exit(1);
