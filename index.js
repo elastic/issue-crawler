@@ -230,7 +230,7 @@ async function main() {
             const [owner, repo] = repository.split('/');
 
             const lastFetchTimestamp = await loadCacheForRepo(owner, repo);
-            console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);
+            console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);            
             const currentTimestamp = new Date().toISOString();
 
             let page = 1;
@@ -251,6 +251,7 @@ async function main() {
                     if (lastFetchTimestamp) {
                         options.since = lastFetchTimestamp;
                     }
+                    
                     const response = await octokit.issues.listForRepo(options);
                     console.log(`[${displayName}#${page}] Remaining request limit: %s/%s`,
                         response.headers['x-ratelimit-remaining'],
@@ -275,11 +276,12 @@ async function main() {
                     throw error;
                 }
             }
-
+            
             // After processing all pages, update the timestamp cache
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
-            await client.bulk({ body: updateTimestampCache });
+            await client.bulk({body: updateTimestampCache});
+        }
 
         const results = await Promise.allSettled([
             ...config.repos.map(rep => handleRepository(rep)),
@@ -295,6 +297,7 @@ async function main() {
             process.exit(1);
         } else {
             console.log('All repositories processed successfully!');
+        }
     } catch (error) {
         console.error('Unexpected error in main execution:', error);
         process.exit(1);
