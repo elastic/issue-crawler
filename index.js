@@ -1,25 +1,26 @@
-const config = require('./config.js');
-const { Octokit } = require('@octokit/rest');
-const { createAppAuth } = require('@octokit/auth-app');
-const { retry } = require('@octokit/plugin-retry');
-const { throttling } = require('@octokit/plugin-throttling');
-const { Client } = require('@elastic/elasticsearch');
-const moment = require('moment');
+import config from './config.js';
+
+import {Octokit} from '@octokit/rest';
+import {createAppAuth} from '@octokit/auth-app';
+import {retry} from '@octokit/plugin-retry';
+import {throttling} from '@octokit/plugin-throttling';
+import {Client} from '@elastic/elasticsearch';
+import moment from 'moment';
 
 const CACHE_INDEX = 'crawler-cache';
 
-const client = new Client({ ...config.elasticsearch, compression: 'gzip' });
+const client = new Client({...config.elasticsearch, compression: 'gzip'});
 
 const RetryOctokit = Octokit.plugin(retry, throttling);
 const octokit = new RetryOctokit({
     previews: ['squirrel-girl-preview'],
     ...(typeof config.githubAuth === 'object' ? { authStrategy: createAppAuth, auth: config.githubAuth } : { auth: config.githubAuth }),
     throttle: {
-        onAbuseLimit: (retryAfter, options, octo) => {
-            octo.log.warn(`Request quota exhausted.`);
+        onRateLimit: (retryAfter, options, octokit) => {
+            octokit.log.warn(`Request quota exhausted.`);
         },
-        onSecondaryRateLimit: (retryAfter, options, octo) => {
-            octo.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`);
+        onSecondaryRateLimit: (retryAfter, options, octokit) => {
+            octokit.log.warn(`Secondary quota detected for request ${options.method} ${options.url}`)
         }
     },
     retry: {
@@ -51,7 +52,6 @@ function convertIssue(owner, repo, raw) {
     const time_to_fix = (raw.created_at && raw.closed_at) ?
         moment(raw.closed_at).diff(moment(raw.created_at)) :
         null;
-
     return {
         id: raw.id,
         last_crawled_at: Date.now(),
@@ -93,7 +93,7 @@ function convertIssue(owner, repo, raw) {
  */
 function getIssueBulkUpdates(index, issues) {
     return [].concat(...issues.map(issue => [
-        { index: { _index: index, _id: issue.id } },
+        {index: {_index: index, _id: issue.id}},
         issue
     ]));
 }
@@ -104,8 +104,8 @@ function getIssueBulkUpdates(index, issues) {
 function getTimestampCacheUpdate(owner, repo, timestamp) {
     const id = `${owner}_${repo}`
     return [
-        { index: { _index: CACHE_INDEX, _id: id } },
-        { owner, repo, timestamp }
+        {index: {_index: CACHE_INDEX, _id: id}},
+        {owner, repo, timestamp}
     ];
 }
 
@@ -121,7 +121,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
         const bulkIssues = getIssueBulkUpdates(indexName, issues);
         const body = [...bulkIssues];
         console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-        const esResult = await client.bulk({ body });
+        const esResult = await client.bulk({body});
 
         if (esResult.errors) {
             const errorItems = esResult.items.filter(x => x.index.error != null);
@@ -143,9 +143,9 @@ async function loadCacheForRepo(owner, repo) {
                 query: {
                     bool: {
                         filter: [
-                            { match: { owner } },
-                            { match: { repo } },
-                            { exists: { field: "timestamp" } }
+                            {match: {owner}},
+                            {match: {repo}},
+                            {exists: {field: "timestamp"}}
                         ]
                     }
                 }
@@ -303,15 +303,7 @@ async function main() {
     }
 }
 
-if (require.main === module) {
-    main().catch(error => {
-        console.error('Failed to execute script:', error);
-        process.exit(1);
-    });
-}
-
-module.exports = {
-    convertIssue,
-    processGitHubIssues,
-    cleanupTransferredIssues
-}
+main().catch(error => {
+    console.error('Failed to execute script:', error);
+    process.exit(1);
+});
