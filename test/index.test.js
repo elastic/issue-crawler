@@ -43,14 +43,16 @@ describe('GitHub issue processing', () => {
         const bulkMock = jest.fn().mockResolvedValue({ body: {} });
         const searchMock = jest.fn().mockResolvedValue({ body: {} });
         const updateMock = jest.fn().mockResolvedValue({ body: {} });
+        const deleteMock = jest.fn().mockResolvedValue({ body: {} });
 
         Client.mockImplementation(() => ({
             bulk: bulkMock,
             search: searchMock,
             update: updateMock,
+            delete: deleteMock
         }));
 
-        clientMock = { bulk: bulkMock, search: searchMock, update: updateMock };
+        clientMock = { bulk: bulkMock, search: searchMock, update: updateMock, delete: deleteMock };
 
         const mod = require('../index.js');
         ({
@@ -178,16 +180,10 @@ describe('GitHub issue processing', () => {
 
             await cleanupTransferredIssues('someOwner', 'someRepo');
 
-            expect(clientMock.update).toHaveBeenCalledTimes(1);
-            expect(clientMock.update).toHaveBeenCalledWith({
+            expect(clientMock.delete).toHaveBeenCalledTimes(1);
+            expect(clientMock.delete).toHaveBeenCalledWith({
                 index: 'issues-someOwner-someRepo',
                 id: 'doc123',
-                body: {
-                    doc: {
-                        state: 'transferred',
-                        is_transferred: true,
-                    },
-                },
             });
         });
 
@@ -212,7 +208,7 @@ describe('GitHub issue processing', () => {
 
             await cleanupTransferredIssues('someOwner', 'someRepo');
 
-            expect(clientMock.update).not.toHaveBeenCalled();
+            expect(clientMock.delete).not.toHaveBeenCalled();
         });
     });
 });

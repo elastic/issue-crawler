@@ -213,15 +213,9 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
 
         if (!stillExists) {
             console.log(`[CLEANUP] Issue #${issueNumber} was moved; marking as transferred in ES`);
-            await client.update({
+            await client.delete({
                 index: indexName,
-                id: docId,
-                body: {
-                    doc: {
-                        state: 'transferred',
-                        is_transferred: true
-                    }
-                }
+                id: docId
             });
         }
     }
