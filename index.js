@@ -276,6 +276,7 @@ async function main() {
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
             await client.bulk({body: updateTimestampCache});
+            await cleanupTransferredIssues(owner, repo, isPrivate);
         }
 
         const results = await Promise.allSettled([
