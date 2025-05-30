@@ -162,6 +162,62 @@ async function loadCacheForRepo(owner, repo) {
     }
 }
 
+/**
+ * Cleans up any stale open issues that might have been transferred.
+ * Checks older open issues in Elasticsearch and deletes them
+ * if they no longer exist in GitHub (i.e., return 301).
+ */
+async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
+    const indexName = isPrivate ? `private-issues-${owner}-${repo}` : `issues-${owner}-${repo}`;
+    console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
+    const esSearch = await client.search({
+    index: indexName,
+        size: 2000,
+        body: {
+            query: {
+                bool: {
+                    must: [{ term: { state: 'open' } }],
+                    filter: [
+                        {
+                            range: {
+                                'updated_at.time': {
+                                    lt: 'now-60d'
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    });
+
+    const hits = esSearch.body.hits.hits;
+    console.log(`[CLEANUP] Found ${hits.length} stale open issues in ${owner}/${repo} to verify.`);
+    for (const doc of hits) {
+        const issueData = doc._source;
+        const issueNumber = issueData.number;
+        const docId = doc._id;
+        let stillExists = true;
+        try {
+            await octokit.issues.get({ owner, repo, issue_number: issueNumber });
+        } catch (err) {
+            if (err.status === 301) {
+                stillExists = false;
+            } else {
+                console.error(`[CLEANUP] Error verifying #${issueNumber}:`, err);
+            }
+        }
+        if (!stillExists) {
+            console.log(`[CLEANUP] Issue #${issueNumber} was moved; deleting from Elasticsearch`);
+            await client.delete({
+                index: indexName,
+                id: docId
+            });
+        }
+    }
+    console.log(`[CLEANUP] Completed cleanup for ${owner}/${repo}`);
+}
+
 async function main() {
     try {
         async function handleRepository(repository, displayName = repository, isPrivate = false) {
