@@ -184,6 +184,13 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
                                     lt: 'now-60d'
                                 }
                             }
+                        },
+                        {
+                            range: {
+                                last_crawled_at: {
+                                    lt: sixtyDaysAgo
+                                }
+                            }
                         }
                     ]
                 }
@@ -212,6 +219,17 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
             await client.delete({
                 index: indexName,
                 id: docId
+            });
+        } else {
+            console.log(`[CLEANUP] Issue #${issueNumber} still exists; updating last_crawled_at to now`);
+            await client.update({
+                index: indexName,
+                id: docId,
+                body: {
+                    doc: {
+                        last_crawled_at: Date.now()
+                    }
+                }
             });
         }
     }
