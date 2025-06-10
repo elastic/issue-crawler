@@ -121,7 +121,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
         const bulkIssues = getIssueBulkUpdates(indexName, issues);
         const body = [...bulkIssues];
         console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-        const esResult = await client.bulk({body});
+        const esResult = await client.bulk({operations: body});
 
         if (esResult.errors) {
             const errorItems = esResult.items.filter(x => x.index.error != null);
@@ -139,15 +139,13 @@ async function loadCacheForRepo(owner, repo) {
             index: CACHE_INDEX,
             _source: ['timestamp'],
             size: 1,
-            body: {
-                query: {
-                    bool: {
-                        filter: [
-                            {match: {owner}},
-                            {match: {repo}},
-                            {exists: {field: "timestamp"}}
-                        ]
-                    }
+            query: {
+                bool: {
+                    filter: [
+                        {match: {owner}},
+                        {match: {repo}},
+                        {exists: {field: "timestamp"}}
+                    ]
                 }
             }
         });
@@ -160,6 +158,70 @@ async function loadCacheForRepo(owner, repo) {
         console.error(`Failed to load cache for ${owner}/${repo}:`, error);
         return null;
     }
+}
+
+/**
+ * Cleans up any stale open issues that might have been transferred.
+ * Checks older open issues in Elasticsearch and deletes them
+ * if they no longer exist in GitHub (i.e., return 301).
+ */
+async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
+    const indexName = isPrivate ? `private-issues-${owner}-${repo}` : `issues-${owner}-${repo}`;
+    console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
+    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const esSearch = await client.search({
+        index: indexName,
+        size: 2000,
+        query: {
+            bool: {
+                must: [{ term: { state: 'open' } }],
+                filter: [
+                    {
+                        range: {
+                            last_crawled_at: {
+                                lt: sixtyDaysAgo
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    });
+
+    const hits = esSearch.hits.hits;
+    console.log(`[CLEANUP] Found ${hits.length} stale open issues in ${owner}/${repo} to verify.`);
+    for (const doc of hits) {
+        const issueData = doc._source;
+        const issueNumber = issueData.number;
+        const docId = doc._id;
+        let stillExists = true;
+        try {
+            await octokit.issues.get({ owner, repo, issue_number: issueNumber });
+        } catch (err) {
+            if (err.status === 301) {
+                stillExists = false;
+            } else {
+                console.error(`[CLEANUP] Error verifying #${issueNumber}:`, err);
+            }
+        }
+        if (!stillExists) {
+            console.log(`[CLEANUP] Issue #${issueNumber} was moved; deleting from Elasticsearch`);
+            await client.delete({
+                index: indexName,
+                id: docId
+            });
+        } else {
+            console.log(`[CLEANUP] Issue #${issueNumber} still exists; updating last_crawled_at to now`);
+            await client.update({
+                index: indexName,
+                id: docId,
+                doc: {
+                    last_crawled_at: Date.now()
+                }
+            });
+        }
+    }
+    console.log(`[CLEANUP] Completed cleanup for ${owner}/${repo}`);
 }
 
 async function main() {
@@ -219,7 +281,8 @@ async function main() {
             // After processing all pages, update the timestamp cache
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
-            await client.bulk({body: updateTimestampCache});
+            await client.bulk({operations: updateTimestampCache});
+            await cleanupTransferredIssues(owner, repo, isPrivate);
         }
 
         const results = await Promise.allSettled([
