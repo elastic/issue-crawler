@@ -170,21 +170,15 @@ async function loadCacheForRepo(owner, repo) {
 async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
     const indexName = isPrivate ? `private-issues-${owner}-${repo}` : `issues-${owner}-${repo}`;
     console.log(`[CLEANUP] Searching for stale open issues in ${indexName}`);
+    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
     const esSearch = await client.search({
-    index: indexName,
+        index: indexName,
         size: 2000,
         body: {
             query: {
                 bool: {
                     must: [{ term: { state: 'open' } }],
                     filter: [
-                        {
-                            range: {
-                                'updated_at.time': {
-                                    lt: 'now-60d'
-                                }
-                            }
-                        },
                         {
                             range: {
                                 last_crawled_at: {
