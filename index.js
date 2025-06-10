@@ -121,7 +121,7 @@ async function processGitHubIssues(owner, repo, response, page, indexName, logDi
         const bulkIssues = getIssueBulkUpdates(indexName, issues);
         const body = [...bulkIssues];
         console.log(`[${logDisplayName}#${page}] Writing ${issues.length} issues to Elasticsearch`);
-        const esResult = await client.bulk({body});
+        const esResult = await client.bulk({operations: body});
 
         if (esResult.errors) {
             const errorItems = esResult.items.filter(x => x.index.error != null);
@@ -139,15 +139,13 @@ async function loadCacheForRepo(owner, repo) {
             index: CACHE_INDEX,
             _source: ['timestamp'],
             size: 1,
-            body: {
-                query: {
-                    bool: {
-                        filter: [
-                            {match: {owner}},
-                            {match: {repo}},
-                            {exists: {field: "timestamp"}}
-                        ]
-                    }
+            query: {
+                bool: {
+                    filter: [
+                        {match: {owner}},
+                        {match: {repo}},
+                        {exists: {field: "timestamp"}}
+                    ]
                 }
             }
         });
@@ -174,25 +172,23 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
     const esSearch = await client.search({
         index: indexName,
         size: 2000,
-        body: {
-            query: {
-                bool: {
-                    must: [{ term: { state: 'open' } }],
-                    filter: [
-                        {
-                            range: {
-                                last_crawled_at: {
-                                    lt: sixtyDaysAgo
-                                }
+        query: {
+            bool: {
+                must: [{ term: { state: 'open' } }],
+                filter: [
+                    {
+                        range: {
+                            last_crawled_at: {
+                                lt: sixtyDaysAgo
                             }
                         }
-                    ]
-                }
+                    }
+                ]
             }
         }
     });
 
-    const hits = esSearch.body.hits.hits;
+    const hits = esSearch.hits.hits;
     console.log(`[CLEANUP] Found ${hits.length} stale open issues in ${owner}/${repo} to verify.`);
     for (const doc of hits) {
         const issueData = doc._source;
@@ -219,10 +215,8 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
             await client.update({
                 index: indexName,
                 id: docId,
-                body: {
-                    doc: {
-                        last_crawled_at: Date.now()
-                    }
+                doc: {
+                    last_crawled_at: Date.now()
                 }
             });
         }
@@ -287,7 +281,7 @@ async function main() {
             // After processing all pages, update the timestamp cache
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
-            await client.bulk({body: updateTimestampCache});
+            await client.bulk({operations: updateTimestampCache});
             await cleanupTransferredIssues(owner, repo, isPrivate);
         }
 
