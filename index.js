@@ -198,14 +198,14 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
         try {
             await octokit.issues.get({ owner, repo, issue_number: issueNumber });
         } catch (err) {
-            if (err.status === 301) {
+            if ([301, 404, 410].includes(err.status)) {
                 stillExists = false;
             } else {
                 console.error(`[CLEANUP] Error verifying #${issueNumber}:`, err);
             }
         }
         if (!stillExists) {
-            console.log(`[CLEANUP] Issue #${issueNumber} was moved; deleting from Elasticsearch`);
+            console.log(`[CLEANUP] Issue #${issueNumber} was removed (status ${err && err.status}); deleting from Elasticsearch`);
             await client.delete({
                 index: indexName,
                 id: docId
