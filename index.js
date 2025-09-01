@@ -195,17 +195,19 @@ async function cleanupTransferredIssues(owner, repo, isPrivate = false) {
         const issueNumber = issueData.number;
         const docId = doc._id;
         let stillExists = true;
+        let errorStatus = null;
         try {
             await octokit.issues.get({ owner, repo, issue_number: issueNumber });
         } catch (err) {
             if ([301, 404, 410].includes(err.status)) {
                 stillExists = false;
+                errorStatus = err.status;
             } else {
                 console.error(`[CLEANUP] Error verifying #${issueNumber}:`, err);
             }
         }
         if (!stillExists) {
-            console.log(`[CLEANUP] Issue #${issueNumber} was removed (status ${err && err.status}); deleting from Elasticsearch`);
+            console.log(`[CLEANUP] Issue #${issueNumber} was removed (status ${errorStatus}); deleting from Elasticsearch`);
             await client.delete({
                 index: indexName,
                 id: docId
@@ -231,7 +233,7 @@ async function main() {
             const [owner, repo] = repository.split('/');
 
             const lastFetchTimestamp = await loadCacheForRepo(owner, repo);
-            console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);            
+            console.log(`[${displayName}] Last fetch timestamp: ${lastFetchTimestamp || 'none'}`);
             const currentTimestamp = new Date().toISOString();
 
             let page = 1;
@@ -252,7 +254,7 @@ async function main() {
                     if (lastFetchTimestamp) {
                         options.since = lastFetchTimestamp;
                     }
-                    
+
                     const response = await octokit.issues.listForRepo(options);
                     console.log(`[${displayName}#${page}] Remaining request limit: %s/%s`,
                         response.headers['x-ratelimit-remaining'],
@@ -277,7 +279,7 @@ async function main() {
                     throw error;
                 }
             }
-            
+
             // After processing all pages, update the timestamp cache
             console.log(`[${displayName}] Updating timestamp cache to ${currentTimestamp}`);
             const updateTimestampCache = getTimestampCacheUpdate(owner, repo, currentTimestamp);
