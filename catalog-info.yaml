@@ -14,5 +14,5 @@ spec:
       repository: elastic/issue-crawler
       teams:
         ci-systems: {}
-  owner: group:ci-systems
+  owner: group:productivity-foundations
   type: buildkite-pipeline
