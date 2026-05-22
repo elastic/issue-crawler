@@ -13,6 +13,6 @@ spec:
     spec:
       repository: elastic/issue-crawler
       teams:
-        ci-systems: {}
+        builder-experience: {}
   owner: group:builder-experience
   type: buildkite-pipeline
