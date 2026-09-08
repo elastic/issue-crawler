@@ -31,3 +31,15 @@ For every AI tool that materially contributes to code, tests, documentation, con
 For a squash merge, verify that the final squash commit message contains every attribution trailer. GitHub may populate that message from the pull-request description, commit information, or only the pull-request title depending on repository settings, so putting attribution in the PR description improves preservation but does not guarantee it.
 
 When preparing a commit or pull request, offer to create it with the correct attribution. If the user will create it manually, show the exact trailers to copy into both places.
+
+## Secret scanning
+
+**Never place credentials, tokens, private keys, cookies, or production secret values in tracked files, examples, tests, prompts, logs, or generated output.** Use the approved Vault-backed secret store (Vault paths are in the Buildkite pipeline `*.env` configuration) and runtime injection mechanism instead.
+
+Secret scanning controls are layered:
+
+- **Pre-commit hook** — `elastic/gitleaks-hooks` at `v1.0.0` runs Gitleaks via `./bin/gitleaks` (Hermit-managed, v8.30.1). Install once with `pre-commit install`. The hook scans staged content before each commit.
+- **GitHub secret scanning** — enabled (public repository).
+- **Buildkite CI enforcement** — the existing pipeline uses `node:18` which lacks Python/pre-commit; CI enforcement is a gap requiring a new PR pipeline or image change.
+
+If Gitleaks detects a secret, treat the finding as exposed, stop immediately, and rotate or revoke the credential before pushing. Never bypass the hook with `--no-verify`, `SKIP=gitleaks`, an allowlist entry, or a GitHub push-protection bypass reason unless the repository owner explicitly authorizes that exact override after reviewing the finding.
