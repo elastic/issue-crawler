@@ -39,7 +39,7 @@ When preparing a commit or pull request, offer to create it with the correct att
 Secret scanning controls are layered:
 
 - **Pre-commit hook** — `elastic/gitleaks-hooks` at `v1.0.0` runs Gitleaks via `./bin/gitleaks` (Hermit-managed, v8.30.1). Install once with `pre-commit install`. The hook scans staged content before each commit.
-- **GitHub secret scanning** — enabled (public repository).
-- **Buildkite CI enforcement** — the existing pipeline uses `node:18` which lacks Python/pre-commit; CI enforcement is a gap requiring a new PR pipeline or image change.
+- **GitHub secret scanning** — enabled, with push protection and non-provider patterns (private keys, connection strings, authorization headers). Push protection blocks a matching secret at `git push`.
+- **Buildkite CI enforcement** — `elastic/hermit#v1.0.2` + `elastic/pre-commit#v1.0.3` plugins run the normal pre-commit hook set (including gitleaks) on every PR via the `github-stats-crawler` pipeline. The step sets its own `python-buildkite-agent` image, so the pipeline-level `node:18` agent does not apply to it. The `buildkite/github-stats-crawler` context is not yet a required check, so a merge is not blocked on it; making it required needs repository-administrator action.
 
 If Gitleaks detects a secret, treat the finding as exposed, stop immediately, and rotate or revoke the credential before pushing. Never bypass the hook with `--no-verify`, `SKIP=gitleaks`, an allowlist entry, or a GitHub push-protection bypass reason unless the repository owner explicitly authorizes that exact override after reviewing the finding.
