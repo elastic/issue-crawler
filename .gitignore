@@ -1,1 +1,4 @@
 /node_modules
+
+# Hermit local state
+.hermit/
